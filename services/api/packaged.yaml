@@ -1,0 +1,356 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Splitify API - Backend for Splitwise Clone
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        DATA_BUCKET:
+          Ref: DataBucket
+Resources:
+  SplitifyUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: splitify-user-pool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AutoVerifiedAttributes:
+      - email
+      UsernameAttributes:
+      - email
+      Schema:
+      - Name: email
+        AttributeDataType: String
+        Mutable: true
+        Required: true
+      - Name: name
+        AttributeDataType: String
+        Mutable: true
+        Required: false
+  SplitifyUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: splitify-app-client
+      UserPoolId:
+        Ref: SplitifyUserPool
+      ExplicitAuthFlows:
+      - ALLOW_USER_PASSWORD_AUTH
+      - ALLOW_REFRESH_TOKEN_AUTH
+      - ALLOW_USER_SRP_AUTH
+      SupportedIdentityProviders:
+      - COGNITO
+      AllowedOAuthFlows:
+      - code
+      - implicit
+      AllowedOAuthScopes:
+      - email
+      - openid
+      - profile
+      CallbackURLs:
+      - exp://localhost:19000
+      - http://localhost:8081
+      LogoutURLs:
+      - exp://localhost:19000
+      - http://localhost:8081
+  SplitifyUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain:
+        Fn::Sub: splitify-auth-${AWS::AccountId}
+      UserPoolId:
+        Ref: SplitifyUserPool
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: splitify-data-${AWS::AccountId}
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - '*'
+          AllowedMethods:
+          - GET
+          - PUT
+          - POST
+          - DELETE
+          - HEAD
+          AllowedOrigins:
+          - '*'
+          MaxAge: 3000
+  SplitifyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors: "'*'"
+  CreateExpenseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/expenses.create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /expenses
+            Method: post
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/expenses.ts
+  DeleteExpenseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/expenses.remove
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /expenses
+            Method: delete
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/expenses.ts
+  UpdateExpenseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/expenses.update
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /expenses
+            Method: put
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/expenses.ts
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/attachments.getUploadUrl
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /attachments/upload-url
+            Method: post
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/attachments.ts
+  ListExpensesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/listExpenses.list
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /expenses
+            Method: get
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/listExpenses.ts
+  CreateGroupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/groups.create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups
+            Method: post
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/groups.ts
+  ListGroupsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/groups.list
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups
+            Method: get
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/groups.ts
+  ListActivitiesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/activities.list
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /activities
+            Method: get
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/activities.ts
+  InviteMemberFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/groups.invite
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups/invite
+            Method: post
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/groups.ts
+  GetBalancesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+      Handler: dist/handlers/balances.get
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /balances
+            Method: get
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/balances.ts
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: 
+        https://${SplitifyApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value:
+      Ref: SplitifyUserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID
+    Value:
+      Ref: SplitifyUserPoolClient
