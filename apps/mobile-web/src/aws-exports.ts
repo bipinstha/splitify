@@ -1,17 +1,17 @@
 const awsmobile = {
     "aws_project_region": "us-east-1",
     "aws_cognito_region": "us-east-1",
-    "aws_user_pools_id": "us-east-1_HY6t0jZ9a",
-    "aws_user_pools_web_client_id": "78fp1c6ffrj4rdblfhbscj9dbr",
+    "aws_user_pools_id": "us-east-1_LYQyjkS3r",
+    "aws_user_pools_web_client_id": "7e9clbctcf40t6qu1a7ivto96v",
     "oauth": {
-        "domain": "splitify-auth-832439451819.auth.us-east-1.amazoncognito.com",
+        "domain": "splitify-auth-v2-832439451819.auth.us-east-1.amazoncognito.com",
         "scope": [
             "email",
             "openid",
             "profile"
         ],
-        "redirectSignIn": "http://localhost:8081",
-        "redirectSignOut": "http://localhost:8081",
+        "redirectSignIn": "http://localhost:8081,splitify://",
+        "redirectSignOut": "http://localhost:8081,splitify://",
         "responseType": "code"
     },
     "federationTarget": "COGNITO_USER_POOLS",

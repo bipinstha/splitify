@@ -35,47 +35,41 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.list = void 0;
 const AWS = __importStar(require("aws-sdk"));
+const response_1 = require("../utils/response");
+const auth_1 = require("../utils/auth");
 const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 const list = async (event) => {
     try {
-        const userId = event.queryStringParameters?.userId;
-        if (!userId) {
-            return { statusCode: 400, body: JSON.stringify({ message: 'userId is required' }) };
-        }
-        // List groups/prefixes
-        const listGroups = await s3.listObjectsV2({
-            Bucket: BUCKET_NAME,
-            Prefix: 'expenses/',
-            Delimiter: '/'
-        }).promise();
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
+        const userId = event.queryStringParameters?.userId || authenticatedUserId;
+        if (!userId)
+            return (0, response_1.error)('userId required', 400);
+        const listGroups = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'expenses/', Delimiter: '/' }).promise();
         const prefixes = listGroups.CommonPrefixes?.map(p => p.Prefix) || ['expenses/non-group/'];
         let allExpenses = [];
         for (const prefix of prefixes) {
-            const listObjects = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
-            const keys = listObjects.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
-            const results = await Promise.all(keys.map(key => s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise()));
-            results.forEach(obj => {
-                if (obj.Body) {
-                    const expense = JSON.parse(obj.Body.toString());
-                    // Only include if user is part of the expense
-                    const isParticipant = expense.paidBy === userId || expense.splits?.some((s) => s.userId === userId);
-                    if (isParticipant) {
-                        allExpenses.push(expense);
+            const listExpenses = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
+            const keys = listExpenses.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
+            for (const key of keys) {
+                try {
+                    const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
+                    if (obj.Body) {
+                        const expense = JSON.parse(obj.Body.toString());
+                        const isParticipant = expense.paidBy === userId || expense.splits.some((s) => s.userId === userId);
+                        if (isParticipant) {
+                            allExpenses.push(expense);
+                        }
                     }
                 }
-            });
+                catch (e) { }
+            }
         }
-        // Sort by date descending
         allExpenses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
-            body: JSON.stringify(allExpenses),
-        };
+        return (0, response_1.success)(allExpenses);
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.list = list;

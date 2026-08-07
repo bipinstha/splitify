@@ -35,63 +35,71 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.get = void 0;
 const AWS = __importStar(require("aws-sdk"));
-const simplifier_1 = require("../utils/simplifier");
+const response_1 = require("../utils/response");
+const auth_1 = require("../utils/auth");
 const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 const get = async (event) => {
     try {
-        const userId = event.queryStringParameters?.userId;
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
+        const userId = event.queryStringParameters?.userId || authenticatedUserId;
         if (!userId)
-            return { statusCode: 400, body: JSON.stringify({ message: 'userId required' }) };
+            return (0, response_1.error)('userId required', 400);
         const listGroups = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'expenses/', Delimiter: '/' }).promise();
         const prefixes = listGroups.CommonPrefixes?.map(p => p.Prefix) || ['expenses/non-group/'];
-        let youAreOwed = 0;
+        let totalBalance = 0;
         let youOwe = 0;
-        const userBalances = {};
+        let youAreOwed = 0;
+        const friendBalances = {};
         for (const prefix of prefixes) {
             const listExpenses = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
             const keys = listExpenses.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
-            const expenseObjects = await Promise.all(keys.map(key => s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise()));
-            for (const obj of expenseObjects) {
-                if (!obj.Body)
-                    continue;
-                const expense = JSON.parse(obj.Body.toString());
-                const mySplit = expense.splits?.find((s) => s.userId === userId);
-                if (expense.paidBy === userId) {
-                    expense.splits.forEach((split) => {
-                        if (split.userId !== userId) {
-                            userBalances[split.userId] = (userBalances[split.userId] || 0) + split.owed;
-                            youAreOwed += split.owed;
-                        }
-                    });
+            for (const key of keys) {
+                try {
+                    const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
+                    if (obj.Body) {
+                        const expense = JSON.parse(obj.Body.toString());
+                        const isPayer = expense.paidBy === userId;
+                        expense.splits.forEach((split) => {
+                            if (isPayer && split.userId !== userId) {
+                                // Others owe me
+                                totalBalance += split.owed;
+                                youAreOwed += split.owed;
+                                friendBalances[split.userId] = (friendBalances[split.userId] || 0) + split.owed;
+                            }
+                            else if (!isPayer && split.userId === userId) {
+                                // I owe others
+                                totalBalance -= split.owed;
+                                youOwe += split.owed;
+                                friendBalances[expense.paidBy] = (friendBalances[expense.paidBy] || 0) - split.owed;
+                            }
+                        });
+                    }
                 }
-                else if (mySplit) {
-                    const payerId = expense.paidBy;
-                    userBalances[payerId] = (userBalances[payerId] || 0) - mySplit.owed;
-                    youOwe += mySplit.owed;
-                }
+                catch (e) { }
             }
         }
-        const friendBalances = Object.keys(userBalances).map(id => ({ friendId: id, balance: userBalances[id] })).filter(fb => fb.balance !== 0);
-        // Simplification Logic
-        const allUserBalances = { ...userBalances };
-        allUserBalances[userId] = youAreOwed - youOwe;
-        const simplifiedTransactions = (0, simplifier_1.simplifyDebts)(allUserBalances);
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
-            body: JSON.stringify({
-                totalBalance: youAreOwed - youOwe,
-                youOwe,
-                youAreOwed,
-                friendBalances,
-                simplifiedTransactions,
-                userId
-            }),
-        };
+        const simplifiedTransactions = [];
+        // Basic debt simplification (just listing net balances for now)
+        Object.entries(friendBalances).forEach(([friendId, balance]) => {
+            if (balance !== 0) {
+                simplifiedTransactions.push({
+                    from: balance < 0 ? 'You' : friendId,
+                    to: balance < 0 ? friendId : 'You',
+                    amount: Math.abs(balance)
+                });
+            }
+        });
+        return (0, response_1.success)({
+            totalBalance,
+            youOwe,
+            youAreOwed,
+            friendBalances: Object.entries(friendBalances).map(([friendId, balance]) => ({ friendId, balance })),
+            simplifiedTransactions
+        });
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.get = get;

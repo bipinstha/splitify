@@ -35,31 +35,25 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getUploadUrl = void 0;
 const AWS = __importStar(require("aws-sdk"));
-const uuid_1 = require("uuid");
-const s3 = new AWS.S3({ signatureVersion: 'v4' });
+const response_1 = require("../utils/response");
+const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 const getUploadUrl = async (event) => {
     try {
-        const { fileName, contentType, expenseId } = JSON.parse(event.body || '{}');
-        if (!fileName || !contentType) {
-            return { statusCode: 400, body: JSON.stringify({ message: 'fileName and contentType required' }) };
-        }
-        const key = `attachments/${expenseId || 'temp'}/${(0, uuid_1.v4)()}_${fileName}`;
-        const params = {
+        const { fileName, contentType } = JSON.parse(event.body || '{}');
+        if (!fileName || !contentType)
+            return (0, response_1.error)('fileName and contentType required', 400);
+        const key = `attachments/${Date.now()}_${fileName}`;
+        const url = s3.getSignedUrl('putObject', {
             Bucket: BUCKET_NAME,
             Key: key,
             ContentType: contentType,
-            Expires: 300, // 5 minutes
-        };
-        const uploadUrl = await s3.getSignedUrlPromise('putObject', params);
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify({ uploadUrl, key }),
-        };
+            Expires: 300,
+        });
+        return (0, response_1.success)({ uploadUrl: url, key });
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.getUploadUrl = getUploadUrl;

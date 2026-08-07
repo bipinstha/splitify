@@ -35,43 +35,41 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.list = void 0;
 const AWS = __importStar(require("aws-sdk"));
+const response_1 = require("../utils/response");
+const auth_1 = require("../utils/auth");
 const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 const list = async (event) => {
     try {
-        const userId = event.queryStringParameters?.userId;
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
+        const userId = event.queryStringParameters?.userId || authenticatedUserId;
         if (!userId)
-            return { statusCode: 400, body: JSON.stringify({ message: 'userId required' }) };
-        // List activities from ALL group folders
-        const listFolders = await s3.listObjectsV2({
-            Bucket: BUCKET_NAME,
-            Prefix: 'activities/',
-            Delimiter: '/'
-        }).promise();
-        const prefixes = listFolders.CommonPrefixes?.map(p => p.Prefix) || ['activities/non-group/'];
+            return (0, response_1.error)('userId required', 400);
+        const listGroups = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'activities/', Delimiter: '/' }).promise();
+        const prefixes = listGroups.CommonPrefixes?.map(p => p.Prefix) || [];
         let allActivities = [];
         for (const prefix of prefixes) {
-            const listObjects = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
-            const keys = listObjects.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
-            const results = await Promise.all(keys.map(key => s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise()));
-            results.forEach(obj => {
-                if (obj.Body) {
-                    const activity = JSON.parse(obj.Body.toString());
-                    // In a real app, we'd filter for activities the user is allowed to see
-                    allActivities.push(activity);
+            const listActivities = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
+            const keys = listActivities.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
+            for (const key of keys) {
+                try {
+                    const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
+                    if (obj.Body) {
+                        const activity = JSON.parse(obj.Body.toString());
+                        // Filter by userId or group membership (simplified for now: show if user is involved)
+                        if (activity.userId === userId || activity.groupId === 'non-group') {
+                            allActivities.push(activity);
+                        }
+                    }
                 }
-            });
+                catch (e) { }
+            }
         }
-        // Sort by timestamp descending
         allActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify(allActivities),
-        };
+        return (0, response_1.success)(allActivities);
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.list = list;

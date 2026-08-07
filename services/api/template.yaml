@@ -5,10 +5,12 @@ Description: Splitify API - Backend for Splitwise Clone
 Globals:
   Function:
     Timeout: 30
-    Runtime: nodejs18.x
+    MemorySize: 512
+    Runtime: nodejs20.x
     Environment:
       Variables:
         DATA_BUCKET: !Ref DataBucket
+        NOTIFICATION_TOPIC_ARN: !Ref NotificationTopic
 
 Resources:
   # Cognito User Pool
@@ -32,9 +34,42 @@ Resources:
           Mutable: true
           Required: false
 
+  # Google Identity Provider
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref SplitifyUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: "355873228126-45c939sdp3e24gc7giiamrm95608h9md.apps.googleusercontent.com"
+        client_secret: "{{resolve:ssm:/splitify/google/client_secret}}"
+        authorize_scopes: "email openid profile"
+      AttributeMapping:
+        email: email
+        name: name
+
+  # Facebook Identity Provider
+  FacebookIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref SplitifyUserPool
+      ProviderName: Facebook
+      ProviderType: Facebook
+      ProviderDetails:
+        client_id: "2469978866775717"
+        client_secret: "{{resolve:ssm:/splitify/facebook/client_secret}}"
+        authorize_scopes: "email,public_profile"
+      AttributeMapping:
+        email: email
+        name: name
+
   # Cognito User Pool Client
   SplitifyUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn:
+      - GoogleIdentityProvider
+      - FacebookIdentityProvider
     Properties:
       ClientName: splitify-app-client
       UserPoolId: !Ref SplitifyUserPool
@@ -44,6 +79,8 @@ Resources:
         - ALLOW_USER_SRP_AUTH
       SupportedIdentityProviders:
         - COGNITO
+        - Google
+        - Facebook
       AllowedOAuthFlows:
         - code
         - implicit
@@ -54,22 +91,24 @@ Resources:
       CallbackURLs:
         - "exp://localhost:19000"
         - "http://localhost:8081"
+        - "splitify://"
       LogoutURLs:
         - "exp://localhost:19000"
         - "http://localhost:8081"
+        - "splitify://"
 
   # Cognito Domain
   SplitifyUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub "splitify-auth-${AWS::AccountId}"
+      Domain: !Sub "splitify-auth-v2-${AWS::AccountId}"
       UserPoolId: !Ref SplitifyUserPool
 
   # S3 Bucket for Data Storage
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub splitify-data-${AWS::AccountId}
+      BucketName: !Sub "splitify-data-v2-${AWS::AccountId}"
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
@@ -82,7 +121,23 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      Cors: "'*'"
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,authorization,x-amz-date,x-api-key,x-amz-security-token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt SplitifyUserPool.Arn
+
+  # SNS Topic for Notifications
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: splitify-notifications
 
   # Lambda Functions
   CreateExpenseFunction:
@@ -100,6 +155,14 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref DataBucket
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -121,7 +184,7 @@ Resources:
             Method: delete
             RestApiId: !Ref SplitifyApi
       Policies:
-        - S3WritePolicy:
+        - S3CrudPolicy:
             BucketName: !Ref DataBucket
     Metadata:
       BuildMethod: esbuild
@@ -144,9 +207,7 @@ Resources:
             Method: put
             RestApiId: !Ref SplitifyApi
       Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref DataBucket
-        - S3WritePolicy:
+        - S3CrudPolicy:
             BucketName: !Ref DataBucket
     Metadata:
       BuildMethod: esbuild
@@ -248,6 +309,85 @@ Resources:
         EntryPoints: 
           - src/handlers/groups.ts
 
+  UpdateGroupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/groups.update
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups
+            Method: put
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - S3WritePolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints: 
+          - src/handlers/groups.ts
+
+  DeleteGroupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/groups.remove
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups
+            Method: delete
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints: 
+          - src/handlers/groups.ts
+
+  GetUserProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/groups.profile
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref SplitifyUserPool
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /users/profile
+            Method: get
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+              Resource: !GetAtt SplitifyUserPool.Arn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints: 
+          - src/handlers/groups.ts
+
   ListActivitiesFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -288,6 +428,8 @@ Resources:
             BucketName: !Ref DataBucket
         - S3WritePolicy:
             BucketName: !Ref DataBucket
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -295,6 +437,33 @@ Resources:
         Target: "es2020"
         EntryPoints: 
           - src/handlers/groups.ts
+
+  SavePushTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/users.saveToken
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /users/push-token
+            Method: post
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - S3WritePolicy:
+            BucketName: !Ref DataBucket
+        - SNSCrudPolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints: 
+          - src/handlers/users.ts
 
   GetBalancesFunction:
     Type: AWS::Serverless::Function
@@ -318,6 +487,98 @@ Resources:
         Target: "es2020"
         EntryPoints: 
           - src/handlers/balances.ts
+
+  AddCommentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/comments.add
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: post
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/handlers/comments.ts
+
+  ListCommentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/comments.list
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: get
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/handlers/comments.ts
+
+  CreateSettlementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/settlements.create
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /settlements
+            Method: post
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/handlers/settlements.ts
+
+  GetGroupAnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/handlers/analytics.getGroupAnalytics
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /groups/analytics
+            Method: get
+            RestApiId: !Ref SplitifyApi
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints: 
+          - src/handlers/analytics.ts
 
 Outputs:
   ApiEndpoint:

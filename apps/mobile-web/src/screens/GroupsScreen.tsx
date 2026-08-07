@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, ActivityIndicator, TextInput } from 'react-native';
 import { COLORS, SPACING } from '../theme/theme';
-import { Plus, Users, ChevronRight, UserPlus, Search } from 'lucide-react-native';
+import { Plus, Users, ChevronRight, UserPlus, Search, BarChart2 } from 'lucide-react-native';
 import { api } from '../utils/api';
+import { useAuth } from '../utils/auth';
 
 export default function GroupsScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState<any[]>([]);
   const [filteredGroups, setFilteredGroups] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchGroups = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await api.listGroups('user_123'); // Hardcoded for now
+      const data = await api.listGroups(user.userId);
       setGroups(data);
       setFilteredGroups(data);
     } catch (error) {
@@ -22,6 +28,10 @@ export default function GroupsScreen({ navigation }: any) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchGroups();
+  }, [user]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -67,7 +77,10 @@ export default function GroupsScreen({ navigation }: any) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.groupItemContainer}>
-            <TouchableOpacity style={styles.groupItem}>
+            <TouchableOpacity 
+              style={styles.groupItem}
+              onPress={() => navigation.navigate('GroupAnalytics', { groupId: item.id, groupName: item.name, groupType: item.type })}
+            >
               <View style={styles.groupIcon}>
                 <Users color={COLORS.textSecondary} size={20} />
               </View>
@@ -75,6 +88,7 @@ export default function GroupsScreen({ navigation }: any) {
                 <Text style={styles.groupName}>{item.name}</Text>
                 <Text style={styles.groupMeta}>{item.members.length} members</Text>
               </View>
+              <BarChart2 color={COLORS.primary} size={20} style={{ marginRight: 10 }} opacity={0.6} />
             </TouchableOpacity>
             
             <TouchableOpacity 

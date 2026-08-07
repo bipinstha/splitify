@@ -37,22 +37,27 @@ exports.invite = exports.list = exports.create = void 0;
 const AWS = __importStar(require("aws-sdk"));
 const uuid_1 = require("uuid");
 const activityLogger_1 = require("../utils/activityLogger");
+const notificationService_1 = require("../utils/notificationService");
+const response_1 = require("../utils/response");
+const auth_1 = require("../utils/auth");
 const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 const create = async (event) => {
     try {
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
         if (!event.body)
-            return { statusCode: 400, body: JSON.stringify({ message: 'Missing body' }) };
+            return (0, response_1.error)('Missing body', 400);
         const { name, type, members, createdBy } = JSON.parse(event.body);
-        if (!name || !createdBy)
-            return { statusCode: 400, body: JSON.stringify({ message: 'Name and createdBy required' }) };
+        const finalCreatedBy = createdBy || authenticatedUserId;
+        if (!name || !finalCreatedBy)
+            return (0, response_1.error)('Name and createdBy required', 400);
         const groupId = `group_${Date.now()}_${(0, uuid_1.v4)().substring(0, 8)}`;
         const groupData = {
             id: groupId,
             name,
             type: type || 'Other',
-            members: members || [createdBy],
-            createdBy,
+            members: members || [finalCreatedBy],
+            createdBy: finalCreatedBy,
             createdAt: new Date().toISOString(),
         };
         await s3.putObject({
@@ -61,19 +66,20 @@ const create = async (event) => {
             Body: JSON.stringify(groupData),
             ContentType: 'application/json',
         }).promise();
-        await (0, activityLogger_1.logActivity)(createdBy, 'CREATE_GROUP', `created the group "${name}"`, groupId);
-        return { statusCode: 201, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(groupData) };
+        await (0, activityLogger_1.logActivity)(finalCreatedBy, 'CREATE_GROUP', `created the group "${name}"`, groupId);
+        return (0, response_1.success)(groupData, 201);
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.create = create;
 const list = async (event) => {
     try {
-        const userId = event.queryStringParameters?.userId;
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
+        const userId = event.queryStringParameters?.userId || authenticatedUserId;
         if (!userId)
-            return { statusCode: 400, body: JSON.stringify({ message: 'userId required' }) };
+            return (0, response_1.error)('userId required', 400);
         const listObjects = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'groups/', Delimiter: '/' }).promise();
         const prefixes = listObjects.CommonPrefixes?.map(p => p.Prefix) || [];
         let userGroups = [];
@@ -88,34 +94,42 @@ const list = async (event) => {
             }
             catch (e) { }
         }
-        return { statusCode: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(userGroups) };
+        return (0, response_1.success)(userGroups);
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.list = list;
 const invite = async (event) => {
     try {
+        const authenticatedUserId = (0, auth_1.getUserId)(event);
         if (!event.body)
-            return { statusCode: 400, body: JSON.stringify({ message: 'Missing body' }) };
+            return (0, response_1.error)('Missing body', 400);
         const { groupId, email } = JSON.parse(event.body);
         if (!groupId || !email)
-            return { statusCode: 400, body: JSON.stringify({ message: 'GroupId and email required' }) };
+            return (0, response_1.error)('GroupId and email required', 400);
         const groupKey = `groups/${groupId}/metadata.json`;
         const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: groupKey }).promise();
         if (!obj.Body)
-            return { statusCode: 404, body: JSON.stringify({ message: 'Group not found' }) };
+            return (0, response_1.error)('Group not found', 404);
         const group = JSON.parse(obj.Body.toString());
         if (!group.members.includes(email)) {
             group.members.push(email);
             await s3.putObject({ Bucket: BUCKET_NAME, Key: groupKey, Body: JSON.stringify(group), ContentType: 'application/json' }).promise();
+            // Notify the invited user
+            try {
+                await (0, notificationService_1.sendNotification)(email, 'New Group Invite', `You've been added to the group "${group.name}"`);
+            }
+            catch (e) {
+                console.error('Failed to send invite notification', e);
+            }
         }
-        await (0, activityLogger_1.logActivity)('user_123', 'INVITE_MEMBER', `added ${email} to the group`, groupId);
-        return { statusCode: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(group) };
+        await (0, activityLogger_1.logActivity)(authenticatedUserId, 'INVITE_MEMBER', `added ${email} to the group`, groupId);
+        return (0, response_1.success)(group);
     }
-    catch (error) {
-        return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    catch (err) {
+        return (0, response_1.error)(err.message);
     }
 };
 exports.invite = invite;

@@ -4,14 +4,21 @@ import { COLORS, SPACING } from '../theme/theme';
 import { api } from '../utils/api';
 import { Bell, CreditCard, UserPlus, Trash2, PlusCircle } from 'lucide-react-native';
 
+import { useAuth } from '../utils/auth';
+
 export default function ActivityScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<any[]>([]);
 
   const fetchActivities = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await api.listActivities('user_123'); // Hardcoded
+      const data = await api.listActivities(user.userId);
       setActivities(data);
     } catch (error) {
       console.error(error);
@@ -19,6 +26,10 @@ export default function ActivityScreen({ navigation }: any) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchActivities();
+  }, [user]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {

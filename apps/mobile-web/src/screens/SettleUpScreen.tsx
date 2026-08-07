@@ -11,10 +11,12 @@ import {
   FlatList
 } from 'react-native';
 import { COLORS, SPACING } from '../theme/theme';
-import { X, Check, User } from 'lucide-react-native';
+import { X, Check, User, ChevronRight } from 'lucide-react-native';
 import { api } from '../utils/api';
+import { useAuth } from '../utils/auth';
 
 export default function SettleUpScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [friendBalances, setFriendBalances] = useState<any[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
@@ -23,12 +25,13 @@ export default function SettleUpScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchBalances();
-  }, []);
+  }, [user]);
 
   const fetchBalances = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const data = await api.getBalances('user_123'); // Hardcoded
+      const data = await api.getBalances(user.userId);
       // Only show people you owe (balance < 0)
       setFriendBalances(data.friendBalances || []);
     } catch (error) {
@@ -39,26 +42,14 @@ export default function SettleUpScreen({ navigation }: any) {
   };
 
   const handleSettle = async () => {
-    if (!selectedFriend || !amount) {
+    if (!selectedFriend || !amount || !user) {
       Alert.alert('Error', 'Please select a friend and enter an amount');
       return;
     }
 
     setSaving(true);
     try {
-      // User A pays User B $50
-      // paidBy: User A, amount: $50, split: {User B: $50}
-      await api.createExpense({
-        description: `Settle up with ${selectedFriend.friendId}`,
-        amount: amount,
-        paidBy: 'user_123',
-        splitType: 'exact',
-        splits: [
-          { userId: selectedFriend.friendId, owed: parseFloat(amount) }
-        ],
-        category: 'Payment'
-      });
-      
+      await api.settleUp(selectedFriend.friendId, amount);
       Alert.alert('Success', 'Settlement recorded!', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);

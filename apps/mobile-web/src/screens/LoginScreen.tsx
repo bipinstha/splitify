@@ -1,35 +1,67 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../theme/theme';
-import { Globe, Apple, Facebook } from 'lucide-react-native';
 import { signIn, signInWithRedirect } from 'aws-amplify/auth';
+import { debugAmplifyConfig, getDetailedAuthError } from '../utils/authDebug';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Debug Amplify config on mount
+  useEffect(() => {
+    debugAmplifyConfig();
+  }, []);
+
+  const sanitizeEmail = (input: string) => {
+    // Some users might accidentally paste paths or have weird browser autofill
+    // This strips everything before the last space and trims
+    const clean = input.trim().split(' ').pop() || '';
+    return clean.toLowerCase();
+  };
 
   const handleLogin = async () => {
+    setErrorMsg(null);
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      setErrorMsg('Please enter email and password');
       return;
     }
 
+    const cleanEmail = sanitizeEmail(email);
+
     setLoading(true);
     try {
-      await signIn({ username: email, password });
+      console.log(`[LOGIN] Attempting login with clean email: "${cleanEmail}"`);
+      const { isSignedIn, nextStep } = await signIn({ username: cleanEmail, password });
+      console.log('Login result:', { isSignedIn, nextStep });
+      
+      if (nextStep.signInStep === 'CONFIRM_SIGN_UP') {
+        Alert.alert('Verification Required', 'Please verify your email before logging in.', [
+          { text: 'Verify', onPress: () => navigation.navigate('Signup', { email: cleanEmail }) }
+        ]);
+      }
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Check your credentials');
+      console.error('Login Error:', error);
+      const details = getDetailedAuthError(error);
+      setErrorMsg(details);
+      // Fallback alert for mobile
+      if (Platform.OS !== 'web') {
+        Alert.alert('Login Failed', details);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleSocialLogin = async (provider: 'Google' | 'Facebook' | 'Apple') => {
+    setErrorMsg(null);
     try {
       await signInWithRedirect({ provider });
     } catch (error: any) {
-      Alert.alert('Social Login Error', error.message);
+      setErrorMsg(error.message);
     }
   };
 
@@ -45,6 +77,12 @@ export default function LoginScreen({ navigation }: any) {
         </View>
 
         <View style={styles.form}>
+          {errorMsg && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          )}
+
           <TextInput 
             style={styles.input}
             placeholder="Email address"
@@ -52,7 +90,10 @@ export default function LoginScreen({ navigation }: any) {
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(val) => {
+              setEmail(val);
+              if (errorMsg) setErrorMsg(null);
+            }}
           />
           <TextInput 
             style={styles.input}
@@ -67,7 +108,10 @@ export default function LoginScreen({ navigation }: any) {
             {loading ? <ActivityIndicator color="white" /> : <Text style={styles.loginButtonText}>Log In</Text>}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.forgotPassword}>
+          <TouchableOpacity 
+            style={styles.forgotPassword} 
+            onPress={() => navigation.navigate('ForgotPassword')}
+          >
             <Text style={styles.forgotPasswordText}>Forgot password?</Text>
           </TouchableOpacity>
         </View>
@@ -130,6 +174,20 @@ const styles = StyleSheet.create({
   },
   form: {
     marginBottom: SPACING.xl,
+  },
+  errorContainer: {
+    backgroundColor: '#FFE5E5',
+    padding: SPACING.md,
+    borderRadius: 8,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#FF000033',
+  },
+  errorText: {
+    color: '#D8000C',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: COLORS.surface,

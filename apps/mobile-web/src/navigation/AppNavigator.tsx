@@ -6,10 +6,12 @@ import { getCurrentUser } from 'aws-amplify/auth';
 import { Hub } from 'aws-amplify/utils';
 import { LayoutDashboard, Users as UsersIcon, Settings, Bell, User } from 'lucide-react-native';
 import { COLORS } from '../theme/theme';
+import { registerForPushNotificationsAsync } from '../utils/notificationHandler';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import AddExpenseScreen from '../screens/AddExpenseScreen';
 import GroupsScreen from '../screens/GroupsScreen';
 import CreateGroupScreen from '../screens/CreateGroupScreen';
@@ -19,6 +21,7 @@ import ExpenseDetailScreen from '../screens/ExpenseDetailScreen';
 import EditExpenseScreen from '../screens/EditExpenseScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import GroupAnalyticsScreen from '../screens/GroupAnalyticsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -91,6 +94,7 @@ export default function AppNavigator() {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      registerForPushNotificationsAsync(currentUser.userId);
     } catch (error) {
       setUser(null);
     } finally {
@@ -134,11 +138,16 @@ export default function AppNavigator() {
               name="EditExpense" 
               component={EditExpenseScreen} 
             />
+            <Stack.Screen 
+              name="GroupAnalytics" 
+              component={GroupAnalyticsScreen} 
+            />
           </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         )}
       </Stack.Navigator>

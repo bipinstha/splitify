@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "aws-sdk": "^2.1693.0",
+    "axios": "^1.15.2",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

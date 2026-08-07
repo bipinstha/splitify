@@ -12,13 +12,15 @@ import {
 import { COLORS, SPACING } from '../theme/theme';
 import { X, Camera } from 'lucide-react-native';
 import { api } from '../utils/api';
+import { useAuth } from '../utils/auth';
 
 export default function CreateGroupScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
-    if (!name) {
+    if (!name || !user) {
       Alert.alert('Error', 'Please enter a group name');
       return;
     }
@@ -28,8 +30,8 @@ export default function CreateGroupScreen({ navigation }: any) {
       await api.createGroup({
         name,
         type: 'Home',
-        createdBy: 'user_123', // Hardcoded
-        members: ['user_123']
+        createdBy: user.userId,
+        members: [user.userId]
       });
       navigation.goBack();
     } catch (error: any) {

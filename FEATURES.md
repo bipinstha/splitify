@@ -38,6 +38,12 @@ Splitify is a cross-platform (Web, Android, iOS) expense-splitting application d
 - **Data Storage:** **AWS S3** for persistent data and file storage.
 - **Authentication Service:** Integration with AWS Cognito or similar for social/manual auth.
 
-## 7. Reporting & Analytics
-- **Monthly Spending:** Category-wise breakdown of expenses.
-- **Export Data:** Download expense history in CSV or PDF format.
+## 8. Backlog & Future Enhancements
+- **Debt Simplification:** Implementation of an algorithm to minimize the total number of transactions required to settle a group.
+- **Multi-currency Support:** Automated currency conversion using live exchange rate APIs.
+- **Receipt OCR Scanning:** Integration with AWS Textract to extract expense details from images automatically.
+- **Recurring Expenses:** Support for monthly/weekly automated expense creation (e.g., rent, utilities).
+- **Expense Comments:** Threaded discussions on individual expense records.
+- **Payment Integration:** Direct deep-linking to PayPal, Venmo, or UPI for settlements.
+- **Offline Mode:** Local data persistence and background synchronization for low-connectivity environments.
+- **Advanced Exporting:** Generation of PDF summary reports and CSV data exports.

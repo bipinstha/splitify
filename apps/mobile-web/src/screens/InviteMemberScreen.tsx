@@ -10,24 +10,36 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { COLORS, SPACING } from '../theme/theme';
-import { X, Mail } from 'lucide-react-native';
+import { X, UserPlus } from 'lucide-react-native';
 import { api } from '../utils/api';
 
 export default function InviteMemberScreen({ route, navigation }: any) {
   const { groupId, groupName } = route.params;
-  const [email, setEmail] = useState('');
+  const [emailOrPhone, setEmailOrPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleInvite = async () => {
-    if (!email || !email.includes('@')) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    const input = emailOrPhone.trim();
+    if (!input) {
+      Alert.alert('Error', 'Please enter an email address or phone number');
       return;
     }
 
+    const isEmail = input.includes('@');
+    const cleanedPhone = input.replace(/[^0-9+]/g, '');
+    const isPhone = cleanedPhone.length >= 7 && (cleanedPhone.startsWith('+') || /^\d+$/.test(cleanedPhone));
+
+    if (!isEmail && !isPhone) {
+      Alert.alert('Error', 'Please enter a valid email address or phone number (e.g. +1234567890)');
+      return;
+    }
+
+    const inviteValue = isEmail ? input.toLowerCase() : cleanedPhone;
+
     setLoading(true);
     try {
-      await api.inviteMember(groupId, email.toLowerCase().trim());
-      Alert.alert('Success', `${email} has been added to ${groupName}`, [
+      await api.inviteMember(groupId, inviteValue);
+      Alert.alert('Success', `"${inviteValue}" has been added to ${groupName}`, [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (error: any) {
@@ -51,19 +63,19 @@ export default function InviteMemberScreen({ route, navigation }: any) {
 
       <View style={styles.content}>
         <View style={styles.inputContainer}>
-          <Mail color={COLORS.textSecondary} size={20} style={styles.icon} />
+          <UserPlus color={COLORS.textSecondary} size={20} style={styles.icon} />
           <TextInput
             style={styles.input}
-            placeholder="Enter email address"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
+            placeholder="Email address or phone number"
+            value={emailOrPhone}
+            onChangeText={setEmailOrPhone}
+            keyboardType="default"
             autoCapitalize="none"
             autoFocus
           />
         </View>
         <Text style={styles.helperText}>
-          Entering an email will instantly add this person to your group.
+          Entering an email address or phone number (e.g. +1234567890) will instantly add this person to your group.
         </Text>
       </View>
     </SafeAreaView>

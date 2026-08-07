@@ -1,50 +1,57 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import * as AWS from 'aws-sdk';
+import S3 from 'aws-sdk/clients/s3';
+import { success, error } from '../utils/response';
+import { getUserId } from '../utils/auth';
 
-const s3 = new AWS.S3();
+const s3 = new S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 
 export const list = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const userId = event.queryStringParameters?.userId;
-    if (!userId) return { statusCode: 400, body: JSON.stringify({ message: 'userId required' }) };
+    const authenticatedUserId = getUserId(event);
+    const userId = event.queryStringParameters?.userId || authenticatedUserId;
+    if (!userId) return error('userId required', 400);
 
-    // List activities from ALL group folders
-    const listFolders = await s3.listObjectsV2({
-      Bucket: BUCKET_NAME,
-      Prefix: 'activities/',
-      Delimiter: '/'
-    }).promise();
+    // Build the set of groupIds this user belongs to
+    const groupList = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'groups/', Delimiter: '/' }).promise();
+    const groupPrefixes = groupList.CommonPrefixes?.map(p => p.Prefix) || [];
+    const userGroupIds = new Set<string>();
 
-    const prefixes = listFolders.CommonPrefixes?.map(p => p.Prefix) || ['activities/non-group/'];
+    await Promise.all(groupPrefixes.map(async prefix => {
+      try {
+        const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: `${prefix}metadata.json` }).promise();
+        if (obj.Body) {
+          const group = JSON.parse(obj.Body.toString());
+          if (group.members.includes(userId)) userGroupIds.add(group.id);
+        }
+      } catch (e) {}
+    }));
+
+    // Fetch activities — include if: in a group the user belongs to, OR the user's own non-group activity
+    const activityList = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'activities/', Delimiter: '/' }).promise();
+    const activityPrefixes = activityList.CommonPrefixes?.map(p => p.Prefix) || [];
     let allActivities: any[] = [];
 
-    for (const prefix of prefixes) {
-      const listObjects = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
-      const keys = listObjects.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
+    for (const prefix of activityPrefixes) {
+      const listActivities = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
+      const keys = listActivities.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
 
-      const results = await Promise.all(
-        keys.map(key => s3.getObject({ Bucket: BUCKET_NAME, Key: key! }).promise())
-      );
-
-      results.forEach(obj => {
-        if (obj.Body) {
+      for (const key of keys) {
+        try {
+          const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key as string }).promise();
+          if (!obj.Body) continue;
           const activity = JSON.parse(obj.Body.toString());
-          // In a real app, we'd filter for activities the user is allowed to see
-          allActivities.push(activity);
-        }
-      });
+          const inUserGroup = userGroupIds.has(activity.groupId);
+          const isOwnNonGroup = activity.groupId === 'non-group' && activity.userId === userId;
+          if (inUserGroup || isOwnNonGroup) allActivities.push(activity);
+        } catch (e) {}
+      }
     }
 
-    // Sort by timestamp descending
     allActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    return {
-      statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify(allActivities),
-    };
-  } catch (error: any) {
-    return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    return success(allActivities);
+  } catch (err: any) {
+    return error(err.message);
   }
 };

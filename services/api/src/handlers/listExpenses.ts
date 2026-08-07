@@ -1,55 +1,58 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import * as AWS from 'aws-sdk';
+import S3 from 'aws-sdk/clients/s3';
+import { success, error } from '../utils/response';
+import { getUserId } from '../utils/auth';
 
-const s3 = new AWS.S3();
+const s3 = new S3();
 const BUCKET_NAME = process.env.DATA_BUCKET || '';
 
 export const list = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const userId = event.queryStringParameters?.userId;
-    if (!userId) {
-      return { statusCode: 400, body: JSON.stringify({ message: 'userId is required' }) };
-    }
+    const authenticatedUserId = getUserId(event);
+    const userId = event.queryStringParameters?.userId || authenticatedUserId;
+    if (!userId) return error('userId required', 400);
 
-    // List groups/prefixes
-    const listGroups = await s3.listObjectsV2({
-      Bucket: BUCKET_NAME,
-      Prefix: 'expenses/',
-      Delimiter: '/'
-    }).promise();
+    const authorizer = event.requestContext?.authorizer;
+    const userEmail = authorizer?.claims?.email;
+    const userPhone = authorizer?.claims?.phone_number;
 
-    const prefixes = listGroups.CommonPrefixes?.map(p => p.Prefix) || ['expenses/non-group/'];
+    const listGroups = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'expenses/', Delimiter: '/' }).promise();
+    const prefixes = Array.from(new Set([
+      'expenses/non-group/',
+      ...(listGroups.CommonPrefixes?.map(p => p.Prefix).filter(Boolean) || [])
+    ]));
     let allExpenses: any[] = [];
 
     for (const prefix of prefixes) {
-      const listObjects = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
-      const keys = listObjects.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
-
-      const results = await Promise.all(
-        keys.map(key => s3.getObject({ Bucket: BUCKET_NAME, Key: key! }).promise())
-      );
-
-      results.forEach(obj => {
-        if (obj.Body) {
-          const expense = JSON.parse(obj.Body.toString());
-          // Only include if user is part of the expense
-          const isParticipant = expense.paidBy === userId || expense.splits?.some((s: any) => s.userId === userId);
-          if (isParticipant) {
-            allExpenses.push(expense);
+      const listExpenses = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
+      const keys = listExpenses.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
+      
+      for (const key of keys) {
+        try {
+          const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key as string }).promise();
+          if (obj.Body) {
+            const expense = JSON.parse(obj.Body.toString());
+            const isPayer = expense.paidBy === userId || 
+                            (userEmail && expense.paidBy === userEmail) || 
+                            (userPhone && expense.paidBy === userPhone);
+            const isSplitMember = expense.splits?.some((s: any) => 
+              s.userId === userId || 
+              (userEmail && s.userId === userEmail) || 
+              (userPhone && s.userId === userPhone)
+            );
+            
+            if (isPayer || isSplitMember) {
+              allExpenses.push(expense);
+            }
           }
-        }
-      });
+        } catch (e) {}
+      }
     }
 
-    // Sort by date descending
     allExpenses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    return {
-      statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET' },
-      body: JSON.stringify(allExpenses),
-    };
-  } catch (error: any) {
-    return { statusCode: 500, body: JSON.stringify({ message: error.message }) };
+    return success(allExpenses);
+  } catch (err: any) {
+    return error(err.message);
   }
 };

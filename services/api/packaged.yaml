@@ -88,7 +88,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/expenses.create
       Events:
         ApiEvent:
@@ -113,7 +113,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/expenses.remove
       Events:
         ApiEvent:
@@ -138,7 +138,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/expenses.update
       Events:
         ApiEvent:
@@ -166,7 +166,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/attachments.getUploadUrl
       Events:
         ApiEvent:
@@ -191,7 +191,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/listExpenses.list
       Events:
         ApiEvent:
@@ -216,7 +216,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/groups.create
       Events:
         ApiEvent:
@@ -241,7 +241,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/groups.list
       Events:
         ApiEvent:
@@ -266,7 +266,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/activities.list
       Events:
         ApiEvent:
@@ -291,7 +291,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/groups.invite
       Events:
         ApiEvent:
@@ -315,11 +315,39 @@ Resources:
         Target: es2020
         EntryPoints:
         - src/handlers/groups.ts
+  SavePushTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
+      Handler: dist/handlers/users.saveToken
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /users/push-token
+            Method: post
+            RestApiId:
+              Ref: SplitifyApi
+      Policies:
+      - S3ReadPolicy:
+          BucketName:
+            Ref: DataBucket
+      - S3WritePolicy:
+          BucketName:
+            Ref: DataBucket
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+        - src/handlers/users.ts
   GetBalancesFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: 
-        s3://splitify-deploy-832439451819/dcb9d4f446c14b01d216254cb2496baf
+        s3://splitify-deploy-832439451819/109af79c71432f00325d5369d1250c62
       Handler: dist/handlers/balances.get
       Events:
         ApiEvent:
