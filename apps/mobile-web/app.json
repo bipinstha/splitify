@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile-web",
-    "slug": "mobile-web",
+    "name": "Splitify",
+    "slug": "splitify",
     "scheme": "splitify",
     "sdkVersion": "54.0.0",
     "version": "1.0.0",
@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.mobile-web"
+      "bundleIdentifier": "com.splitify.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +25,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobileweb"
+      "package": "com.splitify.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

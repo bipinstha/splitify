@@ -92,10 +92,12 @@ Resources:
         - "exp://localhost:19000"
         - "http://localhost:8081"
         - "splitify://"
+        - !Sub "https://${WebAppCloudFrontDistribution.DomainName}"
       LogoutURLs:
         - "exp://localhost:19000"
         - "http://localhost:8081"
         - "splitify://"
+        - !Sub "https://${WebAppCloudFrontDistribution.DomainName}"
 
   # Cognito Domain
   SplitifyUserPoolDomain:
@@ -115,6 +117,79 @@ Resources:
             AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
             AllowedOrigins: ['*'] # In production, restrict this to your domain
             MaxAge: 3000
+
+  # S3 Bucket for Static Web App Hosting
+  WebAppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "splitify-web-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # CloudFront Origin Access Control (OAC)
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "splitify-web-oac-${AWS::AccountId}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # CloudFront Distribution for Web App
+  WebAppCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        Origins:
+          - Id: S3WebOrigin
+            DomainName: !GetAtt WebAppBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3WebOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+  # S3 Bucket Policy for CloudFront Access
+  WebAppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebAppBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipal
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${WebAppBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebAppCloudFrontDistribution}"
 
   # API Gateway
   SplitifyApi:
@@ -590,3 +665,12 @@ Outputs:
   UserPoolClientId:
     Description: "Cognito App Client ID"
     Value: !Ref SplitifyUserPoolClient
+  WebAppUrl:
+    Description: "Web Application CloudFront URL"
+    Value: !Sub "https://${WebAppCloudFrontDistribution.DomainName}"
+  WebAppBucketName:
+    Description: "Web Application S3 Bucket Name"
+    Value: !Ref WebAppBucket
+  CloudFrontDistributionId:
+    Description: "CloudFront Distribution ID"
+    Value: !Ref WebAppCloudFrontDistribution
