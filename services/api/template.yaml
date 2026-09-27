@@ -116,6 +116,40 @@ Resources:
             AllowedOrigins: ['*'] # In production, restrict this to your domain
             MaxAge: 3000
 
+  # S3 Bucket for Static Web App Hosting
+  WebAppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "splitify-web-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  # Bucket Policy for Public Website Read Access
+  WebAppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebAppBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${WebAppBucket}/*'
+
   # API Gateway
   SplitifyApi:
     Type: AWS::Serverless::Api
@@ -194,3 +228,9 @@ Outputs:
   UserPoolClientId:
     Description: "Cognito App Client ID"
     Value: !Ref SplitifyUserPoolClient
+  WebAppUrl:
+    Description: "Web Application S3 Website URL"
+    Value: !GetAtt WebAppBucket.WebsiteURL
+  WebAppBucketName:
+    Description: "Web Application S3 Bucket Name"
+    Value: !Ref WebAppBucket
