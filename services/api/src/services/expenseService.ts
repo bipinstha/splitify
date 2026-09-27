@@ -30,7 +30,6 @@ export const create = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
 
     let finalSplits = splits;
     if (!splits || splits.length === 0) {
-      // Default to 100% for the payer if no splits provided
       finalSplits = [{ userId: finalPaidBy, owed: parsedAmount }];
     }
 
@@ -58,7 +57,6 @@ export const create = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
 
     await logActivity(finalPaidBy, 'CREATE_EXPENSE', `added "${description}"`, expenseRecord.groupId, { expenseId });
 
-    // PUSH NOTIFICATIONS
     try {
       const notifications = finalSplits
         .filter((s: any) => s.userId !== finalPaidBy)
@@ -85,21 +83,52 @@ export const create = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
   }
 };
 
-export const remove = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const list = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const authenticatedUserId = getUserId(event);
-    const expenseId = event.queryStringParameters?.id;
-    const groupId = event.queryStringParameters?.groupId || 'non-group';
-    if (!expenseId) return error('id required', 400);
+    const userId = event.queryStringParameters?.userId || authenticatedUserId;
+    if (!userId) return error('userId required', 400);
 
-    await s3.deleteObject({
-      Bucket: BUCKET_NAME,
-      Key: `expenses/${groupId}/${expenseId}.json`,
-    }).promise();
+    const authorizer = event.requestContext?.authorizer;
+    const userEmail = authorizer?.claims?.email;
+    const userPhone = authorizer?.claims?.phone_number;
 
-    await logActivity(authenticatedUserId, 'DELETE_EXPENSE', `deleted an expense`, groupId, { expenseId });
+    const listGroups = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'expenses/', Delimiter: '/' }).promise();
+    const prefixes = Array.from(new Set([
+      'expenses/non-group/',
+      ...(listGroups.CommonPrefixes?.map(p => p.Prefix).filter(Boolean) || [])
+    ]));
+    let allExpenses: any[] = [];
 
-    return success({ message: 'Expense deleted' });
+    for (const prefix of prefixes) {
+      const listExpenses = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: prefix }).promise();
+      const keys = listExpenses.Contents?.map(c => c.Key).filter(k => k?.endsWith('.json')) || [];
+      
+      for (const key of keys) {
+        try {
+          const obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key as string }).promise();
+          if (obj.Body) {
+            const expense = JSON.parse(obj.Body.toString());
+            const isPayer = expense.paidBy === userId || 
+                            (userEmail && expense.paidBy === userEmail) || 
+                            (userPhone && expense.paidBy === userPhone);
+            const isSplitMember = expense.splits?.some((s: any) => 
+              s.userId === userId || 
+              (userEmail && s.userId === userEmail) || 
+              (userPhone && s.userId === userPhone)
+            );
+            
+            if (isPayer || isSplitMember) {
+              allExpenses.push(expense);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    allExpenses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return success(allExpenses);
   } catch (err: any) {
     return error(err.message);
   }
@@ -148,6 +177,26 @@ export const update = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
     await logActivity(authenticatedUserId, 'UPDATE_EXPENSE', `updated "${updatedExpense.description}"`, destGroupId, { expenseId: id });
 
     return success(updatedExpense);
+  } catch (err: any) {
+    return error(err.message);
+  }
+};
+
+export const remove = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const authenticatedUserId = getUserId(event);
+    const expenseId = event.queryStringParameters?.id;
+    const groupId = event.queryStringParameters?.groupId || 'non-group';
+    if (!expenseId) return error('id required', 400);
+
+    await s3.deleteObject({
+      Bucket: BUCKET_NAME,
+      Key: `expenses/${groupId}/${expenseId}.json`,
+    }).promise();
+
+    await logActivity(authenticatedUserId, 'DELETE_EXPENSE', `deleted an expense`, groupId, { expenseId });
+
+    return success({ message: 'Expense deleted' });
   } catch (err: any) {
     return error(err.message);
   }

@@ -131,7 +131,6 @@ export const invite = async (event: APIGatewayProxyEvent): Promise<APIGatewayPro
       group.members.push(invitee);
       await s3.putObject({ Bucket: BUCKET_NAME, Key: groupKey, Body: JSON.stringify(group), ContentType: 'application/json' }).promise();
       
-      // Notify the invited user
       try {
         await sendNotification(invitee, 'New Group Invite', `You've been added to the group "${group.name}"`);
       } catch (e) {

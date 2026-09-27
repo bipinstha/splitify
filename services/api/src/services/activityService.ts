@@ -12,7 +12,6 @@ export const list = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxy
     const userId = event.queryStringParameters?.userId || authenticatedUserId;
     if (!userId) return error('userId required', 400);
 
-    // Build the set of groupIds this user belongs to
     const groupList = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'groups/', Delimiter: '/' }).promise();
     const groupPrefixes = groupList.CommonPrefixes?.map(p => p.Prefix) || [];
     const userGroupIds = new Set<string>();
@@ -27,7 +26,6 @@ export const list = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxy
       } catch (e) {}
     }));
 
-    // Fetch activities — include if: in a group the user belongs to, OR the user's own non-group activity
     const activityList = await s3.listObjectsV2({ Bucket: BUCKET_NAME, Prefix: 'activities/', Delimiter: '/' }).promise();
     const activityPrefixes = activityList.CommonPrefixes?.map(p => p.Prefix) || [];
     let allActivities: any[] = [];
