@@ -10,6 +10,7 @@ export default function ActivityScreen({ navigation }: any) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<any[]>([]);
+  const [userNames, setUserNames] = useState<{ [id: string]: string }>({});
 
   const fetchActivities = async () => {
     if (!user) {
@@ -20,11 +21,48 @@ export default function ActivityScreen({ navigation }: any) {
     try {
       const data = await api.listActivities(user.userId);
       setActivities(data);
+      await resolveUserNames(data);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const resolveUserNames = async (activityList: any[]) => {
+    const idsToResolve = new Set<string>();
+    activityList.forEach(act => {
+      if (act.userId) idsToResolve.add(act.userId);
+    });
+
+    const namesMap: { [id: string]: string } = {};
+    for (const id of Array.from(idsToResolve)) {
+      if (user && (id === user.userId || id === user.email || id === user.username)) {
+        namesMap[id] = 'You';
+        continue;
+      }
+
+      if (id.includes('@') || id.startsWith('+') || id.length < 20) {
+        namesMap[id] = id;
+        continue;
+      }
+
+      try {
+        const profile = await api.getUserProfile(id);
+        namesMap[id] = profile.email || profile.phone || profile.userId || id;
+      } catch (err) {
+        namesMap[id] = id;
+      }
+    }
+
+    setUserNames(namesMap);
+  };
+
+  const getUserDisplayName = (id: string) => {
+    if (user && (id === user.userId || id === user.email || id === user.username)) {
+      return 'You';
+    }
+    return userNames[id] || id;
   };
 
   useEffect(() => {
@@ -64,7 +102,7 @@ export default function ActivityScreen({ navigation }: any) {
             </View>
             <View style={styles.info}>
               <Text style={styles.message}>
-                <Text style={styles.userName}>{item.userId}</Text> {item.message}
+                <Text style={styles.userName}>{getUserDisplayName(item.userId)}</Text> {item.message}
               </Text>
               <Text style={styles.time}>{new Date(item.timestamp).toLocaleString()}</Text>
             </View>
