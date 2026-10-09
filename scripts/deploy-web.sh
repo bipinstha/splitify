@@ -48,9 +48,15 @@ fi
 
 echo "📂 Static assets exported to: $BUILD_DIR"
 
-# 3. Sync Assets to S3 Website Bucket
+# 3. Sync Assets to S3 Bucket
 echo "☁️ Syncing assets to s3://$BUCKET_NAME..."
 aws s3 sync "$BUILD_DIR" "s3://$BUCKET_NAME" --delete
+
+# 4. Invalidate CloudFront Cache
+if [ -n "$DISTRIBUTION_ID" ]; then
+  echo "🔄 Creating CloudFront cache invalidation for distribution $DISTRIBUTION_ID..."
+  aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+fi
 
 echo "🎉 Deployment complete!"
 if [ -n "$WEB_URL" ]; then
