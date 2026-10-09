@@ -253,7 +253,8 @@ Resources:
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
-        Minify: true
+        Minify: false
+        Sourcemap: true
         Target: "es2020"
         EntryPoints: 
           - src/handler.ts
