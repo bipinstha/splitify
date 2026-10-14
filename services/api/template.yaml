@@ -6,7 +6,7 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 512
-    Runtime: nodejs22.x
+    Runtime: nodejs24.x
     Environment:
       Variables:
         DATA_BUCKET: !Ref DataBucket
