@@ -48,11 +48,18 @@ export default function SignupScreen({ navigation }: any) {
     try {
       await confirmSignUp({
         username: email,
-        confirmationCode: code
+        confirmationCode: code.replace(/[^0-9a-zA-Z]/g, '').trim(),
       });
-      Alert.alert('Verified!', 'Your account is ready. Please log in.', [
-        { text: 'OK', onPress: () => navigation.navigate('Login') }
-      ]);
+      if (Platform.OS === 'web') {
+        navigation.navigate('Login', {
+          message: 'Account verified successfully! Please log in.',
+          email: email.trim().toLowerCase(),
+        });
+      } else {
+        Alert.alert('Verified!', 'Your account is ready. Please log in.', [
+          { text: 'OK', onPress: () => navigation.navigate('Login', { email: email.trim().toLowerCase() }) }
+        ]);
+      }
     } catch (error: any) {
       Alert.alert('Verification Failed', error.message || 'Invalid code');
     } finally {

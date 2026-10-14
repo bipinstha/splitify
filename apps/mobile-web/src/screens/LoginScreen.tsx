@@ -5,11 +5,22 @@ import { COLORS, SPACING } from '../theme/theme';
 import { signIn, signInWithRedirect } from 'aws-amplify/auth';
 import { debugAmplifyConfig, getDetailedAuthError } from '../utils/authDebug';
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen({ navigation, route }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Sync route params (e.g. from password reset or signup)
+  useEffect(() => {
+    if (route?.params?.message) {
+      setSuccessMsg(route.params.message);
+    }
+    if (route?.params?.email) {
+      setEmail(route.params.email);
+    }
+  }, [route?.params]);
 
   // Debug Amplify config on mount
   useEffect(() => {
@@ -77,6 +88,12 @@ export default function LoginScreen({ navigation }: any) {
         </View>
 
         <View style={styles.form}>
+          {successMsg && (
+            <View style={styles.successContainer}>
+              <Text style={styles.successText}>{successMsg}</Text>
+            </View>
+          )}
+
           {errorMsg && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{errorMsg}</Text>
@@ -185,6 +202,20 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#D8000C',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  successContainer: {
+    backgroundColor: '#E8F5E9',
+    padding: SPACING.md,
+    borderRadius: 8,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#4CAF5033',
+  },
+  successText: {
+    color: '#2E7D32',
     fontSize: 14,
     textAlign: 'center',
     fontWeight: '600',
