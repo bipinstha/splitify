@@ -1,16 +1,73 @@
 const axios = require('axios');
 const puppeteer = require('puppeteer-core');
 const path = require('path');
-const { CognitoIdentityProviderClient, InitiateAuthCommand } = require('@aws-sdk/client-cognito-identity-provider');
+const { 
+  CognitoIdentityProviderClient, 
+  InitiateAuthCommand, 
+  AdminCreateUserCommand, 
+  AdminSetUserPasswordCommand, 
+  AdminDeleteUserCommand 
+} = require('@aws-sdk/client-cognito-identity-provider');
+const { S3Client, DeleteObjectsCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const REGION = 'us-east-1';
+const USER_POOL_ID = 'us-east-1_LYQyjkS3r';
 const CLIENT_ID = '7e9clbctcf40t6qu1a7ivto96v';
+const BUCKET_NAME = 'splitify-data-v2-832439451819';
 const API_BASE = 'https://9rp3icsdy5.execute-api.us-east-1.amazonaws.com/prod';
 const WEB_URL = 'https://d2i4wcpsg76nmm.cloudfront.net';
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const SCREENSHOT_DIR = '/Users/bipinstha/.gemini/antigravity/brain/cab7a9e5-f5ca-4640-908f-1abcb7a45c49';
 
 const cognito = new CognitoIdentityProviderClient({ region: REGION });
+const s3 = new S3Client({ region: REGION });
+
+async function ensureTestUser(email, name, password) {
+  try {
+    await cognito.send(new AdminCreateUserCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: email,
+      UserAttributes: [
+        { Name: 'email', Value: email },
+        { Name: 'name', Value: name },
+        { Name: 'email_verified', Value: 'true' },
+      ],
+      MessageAction: 'SUPPRESS',
+    }));
+  } catch (err) {
+    if (err.name !== 'UsernameExistsException') throw err;
+  }
+  await cognito.send(new AdminSetUserPasswordCommand({
+    UserPoolId: USER_POOL_ID,
+    Username: email,
+    Password: password,
+    Permanent: true,
+  }));
+}
+
+async function deleteTestUser(email) {
+  try {
+    await cognito.send(new AdminDeleteUserCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: email,
+    }));
+    console.log(`   🧹 Deleted test user: ${email}`);
+  } catch (err) {
+    // Ignore if already deleted
+  }
+}
+
+async function cleanupS3Prefix(prefix) {
+  try {
+    const listRes = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET_NAME, Prefix: prefix }));
+    if (listRes.Contents && listRes.Contents.length > 0) {
+      await s3.send(new DeleteObjectsCommand({
+        Bucket: BUCKET_NAME,
+        Delete: { Objects: listRes.Contents.map(c => ({ Key: c.Key })) }
+      }));
+    }
+  } catch (e) {}
+}
 
 async function getAuthToken(username, password) {
   const command = new InitiateAuthCommand({
@@ -33,8 +90,10 @@ async function runE2ESanity() {
   console.log('   SPLITIFY MULTI-USER ALPHA RELEASE SANITY RUNNER      ');
   console.log('========================================================\n');
 
-  // 1. Authenticate both users
-  console.log('1. Authenticating test users...');
+  // 1. Ensure and authenticate both test users
+  console.log('1. Setting up & authenticating test users...');
+  await ensureTestUser('test.alpha1@splitify.app', 'Alpha Tester One', 'AlphaTest123!');
+  await ensureTestUser('test.alpha2@splitify.app', 'Alpha Tester Two', 'AlphaTest123!');
   const user1Auth = await getAuthToken('test.alpha1@splitify.app', 'AlphaTest123!');
   const user2Auth = await getAuthToken('test.alpha2@splitify.app', 'AlphaTest123!');
   console.log('   ✅ User 1 (Alice - test.alpha1@splitify.app) authenticated.');
@@ -196,6 +255,17 @@ async function runE2ESanity() {
   console.log(`   📷 Captured activity tab screenshot: ${activityPic}`);
 
   await browser.close();
+
+  // 12. Cleanup test data and users
+  console.log('\n12. Cleaning up test data & users from AWS...');
+  await cleanupS3Prefix(`groups/${groupId}/`);
+  await cleanupS3Prefix(`expenses/${groupId}/`);
+  await cleanupS3Prefix(`activities/${groupId}/`);
+  await cleanupS3Prefix(`users/${user1Sub}.json`);
+  await cleanupS3Prefix(`users/${user2Sub}.json`);
+  await deleteTestUser('test.alpha1@splitify.app');
+  await deleteTestUser('test.alpha2@splitify.app');
+  console.log('   ✅ Environment cleanly restored.');
 
   console.log('\n========================================================');
   console.log('   🎉 ALL ALPHA SANITY TESTS PASSED SUCCESSFULLY!       ');
