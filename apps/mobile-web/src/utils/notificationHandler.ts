@@ -1,12 +1,12 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { api } from './api';
 
 export async function registerForPushNotificationsAsync(userId: string) {
-  let token;
-
   if (Platform.OS === 'web') return;
+
+  const Notifications = require('expo-notifications');
+  const Device = require('expo-device');
+  let token;
 
   if (Device.isDevice) {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();

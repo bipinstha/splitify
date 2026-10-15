@@ -7,7 +7,8 @@ import {
   SafeAreaView, 
   Alert,
   ActivityIndicator,
-  TextInput
+  TextInput,
+  Platform
 } from 'react-native';
 import { COLORS, SPACING } from '../theme/theme';
 import { fetchUserAttributes, signOut, updateUserAttribute } from 'aws-amplify/auth';
@@ -57,7 +58,28 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const doLogout = async () => {
+      setLoading(true);
+      try {
+        await signOut();
+      } catch (error) {
+        console.error('Logout error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmLogout = typeof window !== 'undefined' && window.confirm 
+        ? window.confirm('Are you sure you want to log out?') 
+        : true;
+      if (confirmLogout) {
+        await doLogout();
+      }
+      return;
+    }
+
     Alert.alert(
       'Log Out',
       'Are you sure you want to log out?',
@@ -66,13 +88,7 @@ export default function ProfileScreen() {
         { 
           text: 'Log Out', 
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              console.error(error);
-            }
-          }
+          onPress: doLogout
         }
       ]
     );

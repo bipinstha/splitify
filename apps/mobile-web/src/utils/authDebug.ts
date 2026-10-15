@@ -22,8 +22,7 @@ export const debugAmplifyConfig = async () => {
       hasTokens: !!session.tokens
     });
   } catch (error: any) {
-    console.log('[AUTH_DEBUG] No active session (expected on first load)');
-    console.error('[AUTH_DEBUG] Session Error:', error.message);
+    console.log('[AUTH_DEBUG] No active session on load');
   }
 };
 

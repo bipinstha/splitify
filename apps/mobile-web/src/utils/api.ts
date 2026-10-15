@@ -3,12 +3,19 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 const BASE_URL = 'https://9rp3icsdy5.execute-api.us-east-1.amazonaws.com/prod';
 
 const getHeaders = async () => {
-  const session = await fetchAuthSession();
-  const token = session.tokens?.idToken?.toString();
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
-  };
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : '',
+    };
+  } catch (e) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': '',
+    };
+  }
 };
 
 export const api = {
@@ -290,10 +297,9 @@ export const api = {
     try {
       const headers = await getHeaders();
       const response = await fetch(`${BASE_URL}/users/profile?userId=${userId}&t=${Date.now()}`, { headers });
-      if (!response.ok) throw new Error('Failed to fetch user profile');
+      if (!response.ok) return { userId, email: userId, phone: userId };
       return await response.json();
     } catch (error) {
-      console.error('API Error (getUserProfile):', error);
       return { userId, email: userId, phone: userId };
     }
   },

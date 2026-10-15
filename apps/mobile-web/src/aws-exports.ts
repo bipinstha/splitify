@@ -10,8 +10,8 @@ const awsmobile = {
             "openid",
             "profile"
         ],
-        "redirectSignIn": "http://localhost:8081,splitify://",
-        "redirectSignOut": "http://localhost:8081,splitify://",
+        "redirectSignIn": "http://localhost:8081,splitify://,https://d2i4wcpsg76nmm.cloudfront.net",
+        "redirectSignOut": "http://localhost:8081,splitify://,https://d2i4wcpsg76nmm.cloudfront.net",
         "responseType": "code"
     },
     "federationTarget": "COGNITO_USER_POOLS",
